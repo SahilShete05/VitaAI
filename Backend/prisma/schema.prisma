@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id          String       @id @default(uuid())
+  name        String
+  email       String       @unique
+  password    String
+  language    String       @default("en")
+  privateMode Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  medications Medication[]
+  vitalSigns  VitalSign[]
+
+  familyMembers FamilyMember[]
+  assessments   Assessment[]
+  reminders     Reminder[]
+}
+
+model FamilyMember {
+  id           String    @id @default(uuid())
+  name         String
+  relationship String
+  dateOfBirth  DateTime?
+  gender       String?
+  userId       String
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assessments Assessment[]
+
+  createdAt DateTime @default(now())
+}
+
+model Assessment {
+  id              String   @id @default(uuid())
+  symptoms        String
+  severity        String?
+  riskLevel       String   @default("unknown")
+  aiSummary       String?
+  recommendations String?
+  userId          String
+  familyMemberId  String?
+  createdAt       DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyMember FamilyMember? @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+}
+
+model Reminder {
+  id                  String    @id @default(uuid())
+  title               String
+  description         String?
+  scheduledAt         DateTime
+  isCompleted         Boolean   @default(false)
+  notificationReady   Boolean   @default(false)
+  notificationReadyAt DateTime?
+  notificationReadAt  DateTime?
+  userId              String
+  createdAt           DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledAt, isCompleted, notificationReady])
+  @@index([userId, notificationReady, notificationReadAt])
+}
+
+model Medication {
+  id            String    @id @default(uuid())
+  name          String
+  dosage        String
+  frequency     String
+  scheduleTimes String[]
+  instructions  String?
+  startDate     DateTime
+  endDate       DateTime?
+  isActive      Boolean   @default(true)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  doses MedicationDose[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isActive])
+  @@index([startDate, endDate])
+}
+
+model MedicationDose {
+  id           String    @id @default(uuid())
+  scheduledFor DateTime
+  status       String    @default("pending")
+  takenAt      DateTime?
+  notes        String?
+  notificationReadAt DateTime?
+
+  medicationId String
+  medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([medicationId, scheduledFor])
+  @@index([medicationId, scheduledFor])
+  @@index([status, scheduledFor])
+}
+
+model VitalSign {
+  id             String   @id @default(uuid())
+  type           String
+  value          Float
+  secondaryValue Float?
+  unit           String
+  recordedAt     DateTime @default(now())
+  notes          String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, type, recordedAt])
+}
