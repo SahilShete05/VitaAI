@@ -1,10 +1,13 @@
+
 const {
   findNearbyHealthcare,
 } = require("../services/healthcareLocator.service");
 
 async function getNearbyHealthcare(req, res, next) {
   try {
-    const places = await findNearbyHealthcare(req.validatedQuery);
+    const places = await findNearbyHealthcare(
+      req.validatedQuery
+    );
 
     return res.status(200).json({
       success: true,
@@ -12,10 +15,13 @@ async function getNearbyHealthcare(req, res, next) {
       data: places,
     });
   } catch (error) {
-    console.error("Healthcare locator error:", error.message);
+    console.error(
+      "[HealthcareLocator] Request failed:",
+      error.message
+    );
 
     if (error.code === "HEALTHCARE_PROVIDER_UNAVAILABLE") {
-      return res.status(502).json({
+      return res.status(503).json({
         success: false,
         code: error.code,
         message:
@@ -36,4 +42,6 @@ async function getNearbyHealthcare(req, res, next) {
   }
 }
 
-module.exports = { getNearbyHealthcare };
+module.exports = {
+  getNearbyHealthcare,
+};

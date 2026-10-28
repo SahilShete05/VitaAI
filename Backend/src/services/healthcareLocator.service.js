@@ -1,130 +1,22 @@
+
 const axios = require("axios");
 
-const OVERPASS_MIRRORS = [
-  "https://overpass.private.coffee/api/interpreter",
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-];
+const GEOAPIFY_URL = "https://api.geoapify.com/v2/places";
+const REQUEST_TIMEOUT = 10000;
+const MAX_RESULTS = 100;
 
-const REQUEST_TIMEOUT = 20000;
-
-const CATEGORY_FILTERS = {
-  hospital: [
-    '["amenity"="hospital"]',
-    '["healthcare"="hospital"]',
-  ],
-
-  clinic: [
-    '["amenity"="clinic"]',
-    '["healthcare"="clinic"]',
-    '["amenity"="doctors"]',
-    '["healthcare"="doctor"]',
-  ],
-
-  pharmacy: [
-    '["amenity"="pharmacy"]',
-    '["healthcare"="pharmacy"]',
-  ],
-
-  laboratory: [
-    '["healthcare"="laboratory"]',
-    '["healthcare"="sample_collection"]',
-    '["amenity"="laboratory"]',
-  ],
-
-  emergency: [
-    '["emergency"="yes"]',
-    '["healthcare"="emergency"]',
-    '["emergency"="ambulance_station"]',
-  ],
-
-  specialist: [
-    '["healthcare"="specialist"]',
-    '["healthcare:speciality"]',
-  ],
-
-  all: [
-    '["amenity"~"^(hospital|clinic|doctors|pharmacy)$"]',
-    '["healthcare"~"^(hospital|clinic|doctor|pharmacy|laboratory|sample_collection|specialist)$"]',
-  ],
+const CATEGORY_MAP = {
+  all: ["healthcare"],
+  hospital: ["healthcare.hospital"],
+  clinic: ["healthcare.clinic_or_praxis"],
+  pharmacy: ["healthcare.pharmacy"],
+  specialist: ["healthcare.clinic_or_praxis"],
+  laboratory: ["healthcare"],
+  emergency: ["healthcare"],
 };
 
 /**
- * Build an Overpass QL query for nearby healthcare facilities.
- */
-function buildQuery(latitude, longitude, radius, category) {
-  const filters = CATEGORY_FILTERS[category] || CATEGORY_FILTERS.all;
-
-  const queryParts = filters.map((filter) => {
-    return `
-      node${filter}(around:${radius},${latitude},${longitude});
-      way${filter}(around:${radius},${latitude},${longitude});
-      relation${filter}(around:${radius},${latitude},${longitude});
-    `;
-  });
-
-  return `
-    [out:json][timeout:15];
-    (
-      ${queryParts.join("\n")}
-    );
-    out center tags;
-  `;
-}
-
-/**
- * Fetch data from Overpass, trying mirrors if one fails.
- */
-async function fetchOverpass(query) {
-  let lastError = null;
-
-  for (const endpoint of OVERPASS_MIRRORS) {
-    try {
-      const response = await axios.post(
-        endpoint,
-        new URLSearchParams({ data: query }).toString(),
-        {
-          timeout: REQUEST_TIMEOUT,
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            Accept: "application/json",
-            "User-Agent": "VitaAI-HealthcareLocator/1.0",
-          },
-        }
-      );
-
-      if (
-        !response.data ||
-        !Array.isArray(response.data.elements)
-      ) {
-        throw new Error("Invalid response from healthcare map provider");
-      }
-
-      return response.data.elements;
-    } catch (error) {
-      lastError = error;
-
-      console.warn(
-        `[HealthcareLocator] Overpass endpoint failed: ${endpoint}`,
-        error.message
-      );
-    }
-  }
-
-  const error = new Error(
-    "Healthcare map service is temporarily unavailable"
-  );
-
-  error.code = "HEALTHCARE_PROVIDER_UNAVAILABLE";
-  error.statusCode = 502;
-  error.cause = lastError;
-
-  throw error;
-}
-
-/**
- * Calculate distance between two coordinates using the Haversine formula.
+ * Calculate the distance between two coordinates.
  * Returns distance in meters.
  */
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -145,93 +37,179 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return (
     2 *
     earthRadiusMeters *
-    Math.atan2(Math.sqrt(boundedA), Math.sqrt(1 - boundedA))
+    Math.atan2(
+      Math.sqrt(boundedA),
+      Math.sqrt(1 - boundedA)
+    )
   );
 }
 
 /**
- * Determine the most useful category for a healthcare facility.
+ * Get raw source tags when the provider includes them.
  */
-function getCategory(tags = {}) {
+function getRawProperties(properties = {}) {
+  return properties.datasource?.raw || {};
+}
+
+/**
+ * Classify a Geoapify healthcare result.
+ */
+function getCategory(properties = {}) {
+  const raw = getRawProperties(properties);
+  const categories = properties.categories || [];
+
+  const categoryText = categories.join(" ").toLowerCase();
+  const name = (properties.name || "").toLowerCase();
+
   if (
-    tags.amenity === "hospital" ||
-    tags.healthcare === "hospital"
+    raw.emergency === "ambulance_station" ||
+    raw.emergency === "yes" ||
+    raw.healthcare === "emergency" ||
+    categoryText.includes("emergency")
   ) {
-    return "hospital";
+    return "emergency";
   }
 
   if (
-    tags.amenity === "pharmacy" ||
-    tags.healthcare === "pharmacy"
-  ) {
-    return "pharmacy";
-  }
-
-  if (
-    tags.healthcare === "laboratory" ||
-    tags.healthcare === "sample_collection" ||
-    tags.amenity === "laboratory"
+    raw.healthcare === "laboratory" ||
+    raw.healthcare === "sample_collection" ||
+    raw.amenity === "laboratory" ||
+    /laboratory|laboratories|diagnostic lab|pathology lab/.test(name)
   ) {
     return "laboratory";
   }
 
   if (
-    tags.amenity === "clinic" ||
-    tags.healthcare === "clinic"
+    categories.some((item) => item.startsWith("healthcare.hospital")) ||
+    raw.amenity === "hospital" ||
+    raw.healthcare === "hospital"
   ) {
+    return "hospital";
+  }
+
+  if (
+    categories.some((item) => item.startsWith("healthcare.pharmacy")) ||
+    raw.amenity === "pharmacy" ||
+    raw.healthcare === "pharmacy"
+  ) {
+    return "pharmacy";
+  }
+
+  if (
+    categories.some((item) =>
+      item.startsWith("healthcare.clinic_or_praxis.")
+    ) ||
+    raw.amenity === "doctors" ||
+    raw.amenity === "clinic" ||
+    raw.healthcare === "clinic" ||
+    raw.healthcare === "doctor"
+  ) {
+    if (
+      raw["healthcare:speciality"] ||
+      raw.healthcare === "specialist" ||
+      categories.some((item) =>
+        item.includes("clinic_or_praxis.")
+      )
+    ) {
+      return "specialist";
+    }
+
     return "clinic";
   }
 
-  if (
-    tags.amenity === "doctors" ||
-    tags.healthcare === "doctor"
-  ) {
+  if (categoryText.includes("healthcare")) {
     return "clinic";
   }
 
-  if (
-    tags.healthcare === "specialist" ||
-    tags["healthcare:speciality"]
-  ) {
-    return "specialist";
-  }
-
-  if (
-    tags.emergency === "yes" ||
-    tags.emergency === "ambulance_station" ||
-    tags.healthcare === "emergency"
-  ) {
-    return "emergency";
-  }
-
-  return tags.amenity || tags.healthcare || "healthcare";
+  return "healthcare";
 }
 
 /**
- * Get usable coordinates for an Overpass node, way, or relation.
+ * Read coordinates from a Geoapify feature.
  */
-function getCoordinates(element) {
-  if (
-    Number.isFinite(element.lat) &&
-    Number.isFinite(element.lon)
-  ) {
-    return {
-      latitude: element.lat,
-      longitude: element.lon,
-    };
-  }
+function getCoordinates(feature) {
+  const properties = feature.properties || {};
+  const coordinates = feature.geometry?.coordinates;
+
+  const longitude = Number(
+    properties.lon ?? coordinates?.[0]
+  );
+
+  const latitude = Number(
+    properties.lat ?? coordinates?.[1]
+  );
 
   if (
-    Number.isFinite(element.center?.lat) &&
-    Number.isFinite(element.center?.lon)
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
   ) {
-    return {
-      latitude: element.center.lat,
-      longitude: element.center.lon,
-    };
+    return null;
   }
 
-  return null;
+  return { latitude, longitude };
+}
+
+/**
+ * Fetch healthcare places from Geoapify.
+ */
+async function fetchHealthcarePlaces({
+  latitude,
+  longitude,
+  radius,
+  category,
+}) {
+  const apiKey = process.env.GEOAPIFY_API_KEY;
+
+  if (!apiKey) {
+    const error = new Error(
+      "Geoapify API key is missing. Configure GEOAPIFY_API_KEY."
+    );
+
+    error.code = "HEALTHCARE_PROVIDER_CONFIG";
+    error.statusCode = 500;
+
+    throw error;
+  }
+
+  try {
+    const response = await axios.get(GEOAPIFY_URL, {
+      timeout: REQUEST_TIMEOUT,
+
+      params: {
+        categories: CATEGORY_MAP[category].join(","),
+        filter: `circle:${longitude},${latitude},${radius}`,
+        bias: `proximity:${longitude},${latitude}`,
+        limit: MAX_RESULTS,
+        lang: "en",
+        apiKey,
+      },
+    });
+
+    if (!Array.isArray(response.data?.features)) {
+      throw new Error("Invalid response from Geoapify");
+    }
+
+    return response.data.features;
+  } catch (cause) {
+    console.error(
+      "[HealthcareLocator] Geoapify request failed:",
+      cause.response?.status || cause.code || cause.message
+    );
+
+    const error = new Error(
+      "Healthcare map service is temporarily unavailable"
+    );
+
+    error.code = "HEALTHCARE_PROVIDER_UNAVAILABLE";
+    error.statusCode = 503;
+    error.cause = cause;
+
+    throw error;
+  }
 }
 
 /**
@@ -241,7 +219,7 @@ function getCoordinates(element) {
  * @param {number} options.latitude
  * @param {number} options.longitude
  * @param {string} [options.category="all"]
- * @param {number} [options.radius=5000] Radius in meters
+ * @param {number} [options.radius=5000]
  */
 async function findNearbyHealthcare({
   latitude,
@@ -277,38 +255,36 @@ async function findNearbyHealthcare({
     const error = new Error(
       "Radius must be between 500 and 20000 meters"
     );
+
     error.statusCode = 400;
     throw error;
   }
 
-  if (!CATEGORY_FILTERS[category]) {
+  if (!CATEGORY_MAP[category]) {
     const error = new Error("Invalid healthcare category");
     error.statusCode = 400;
     throw error;
   }
 
-  const query = buildQuery(latitude, longitude, radius, category);
-  const elements = await fetchOverpass(query);
+  const features = await fetchHealthcarePlaces({
+    latitude,
+    longitude,
+    radius,
+    category,
+  });
 
   const seenIds = new Set();
   const seenFacilities = new Set();
   const facilities = [];
 
-  for (const element of elements) {
-    const tags = element.tags || {};
-    const coordinates = getCoordinates(element);
+  for (const feature of features) {
+    const properties = feature.properties || {};
+    const raw = getRawProperties(properties);
+    const coordinates = getCoordinates(feature);
 
     if (!coordinates) {
       continue;
     }
-
-    const elementId = `${element.type}/${element.id}`;
-
-    if (seenIds.has(elementId)) {
-      continue;
-    }
-
-    seenIds.add(elementId);
 
     const distance = calculateDistance(
       latitude,
@@ -321,14 +297,23 @@ async function findNearbyHealthcare({
       continue;
     }
 
+    const id =
+      properties.place_id ||
+      `${coordinates.latitude},${coordinates.longitude}`;
+
+    if (seenIds.has(id)) {
+      continue;
+    }
+
+    seenIds.add(id);
+
     const name =
-      tags.name ||
-      tags["name:en"] ||
-      tags["official_name"] ||
+      properties.name ||
+      properties.address_line1 ||
       null;
 
-    // Deduplicate named facilities that share essentially the same
-    // location, even if OSM represents them as a node and a building.
+    // Deduplicate named places that have effectively the
+    // same name and coordinates.
     if (name) {
       const normalizedName = name
         .trim()
@@ -348,54 +333,62 @@ async function findNearbyHealthcare({
       seenFacilities.add(facilityKey);
     }
 
-    const addressParts = [
-      tags["addr:housenumber"],
-      tags["addr:street"],
-      tags["addr:suburb"],
-      tags["addr:city"],
-      tags["addr:postcode"],
-    ].filter(Boolean);
+    const facilityCategory = getCategory(properties);
 
-    const isEmergency =
-      tags.emergency === "yes" ||
-      tags.emergency === "ambulance_station" ||
-      tags.healthcare === "emergency";
+    // Broad provider searches are needed for labs and
+    // emergency services. Exclude results we cannot classify
+    // as the requested category.
+    if (
+      category !== "all" &&
+      facilityCategory !== category
+    ) {
+      continue;
+    }
+
+    const address =
+      properties.formatted ||
+      [
+        properties.address_line1,
+        properties.address_line2,
+      ]
+        .filter(Boolean)
+        .join(", ") ||
+      null;
+
+    const phone =
+      raw.phone ||
+      raw["contact:phone"] ||
+      properties.datasource?.raw?.mobile ||
+      null;
+
+    const website =
+      raw.website ||
+      raw["contact:website"] ||
+      null;
+
+    const openingHours =
+      raw.opening_hours || null;
+
+    const isEmergency = facilityCategory === "emergency";
 
     facilities.push({
-      id: elementId,
+      id,
       name: name || "Unnamed healthcare facility",
-      category: getCategory(tags),
+      category: facilityCategory,
 
       latitude: coordinates.latitude,
       longitude: coordinates.longitude,
 
-      location:
-        addressParts.join(", ") ||
-        tags["addr:full"] ||
-        tags["addr:place"] ||
-        null,
+      location: address,
+      address,
 
-      address: addressParts.length
-        ? addressParts.join(", ")
-        : tags["addr:full"] || tags["addr:place"] || null,
-
-      phone:
-        tags.phone ||
-        tags["contact:phone"] ||
-        tags["contact:mobile"] ||
-        null,
-
-      website:
-        tags.website ||
-        tags["contact:website"] ||
-        null,
-
-      openingHours:
-        tags.opening_hours || null,
+      phone,
+      website,
+      openingHours,
 
       emergency: isEmergency,
       emergencyTag:
-        tags.emergency || tags.healthcare || null,
+        raw.emergency || raw.healthcare || null,
 
       distance: Math.round(distance),
       distanceKm: Number((distance / 1000).toFixed(2)),
@@ -411,4 +404,3 @@ module.exports = {
   findNearbyHealthcare,
   getCategory,
 };
-
