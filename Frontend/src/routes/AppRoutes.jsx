@@ -16,6 +16,7 @@
   import MedicineInfo from "../pages/MedicineInfo";
   import LabReportAnalysis from "../pages/LabReportAnalysis";
   import ProfileSettings from "../pages/ProfileSettings";
+  import HelpSupport from "../pages/HelpSupport";
   import {
     HealthReports,
     DoctorSummaries,
@@ -234,6 +235,15 @@
     element={
       <ProtectedRoute>
         <ProfileSettings />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/support"
+    element={
+      <ProtectedRoute>
+        <HelpSupport />
       </ProtectedRoute>
     }
   />

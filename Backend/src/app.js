@@ -5,11 +5,20 @@ const cookieParser = require("cookie-parser");
 
 const app = express();
 
-// CORS configuration
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Origin is not allowed by CORS"));
+    },
     credentials: true,
   })
 );
@@ -46,6 +55,7 @@ app.use("/api/health-report", require("./routes/healthReport.routes"));
 app.use("/api/privacy", require("./routes/privacy.routes"));
 app.use("/api/medications", require("./routes/medication.routes"));
 app.use("/api/vitals", require("./routes/vitalSign.routes"));
+app.use("/api/support", require("./routes/support.routes"));
 
 
 // Handle unknown routes

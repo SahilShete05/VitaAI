@@ -9,7 +9,7 @@ if(!process.env.DIRECT_URL) {
     console.log("DIRECT_URL is not defined in environment variables")
 }
 
-if(!process.env. JWT_SECRET) {
+if(!process.env.JWT_SECRET) {
     console.log("JWT_SECRET is not defined in environment variables")
 }
 
@@ -27,7 +27,6 @@ module.exports = {
   JWT_SECRET: process.env.JWT_SECRET,
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "1d",
 };
-
 
 
 

@@ -11,6 +11,7 @@ import {
   Clock3,
   FileText,
   FlaskConical,
+  HelpCircle,
   HeartPulse,
   LayoutDashboard,
   LogOut,
@@ -53,6 +54,7 @@ const navigation = [
   },
   { label: "Profile Settings", icon: UserRound, path: "/profile" },
   { label: "Privacy Controls", icon: Settings, path: "/privacy" },
+  { label: "Help & Support", icon: HelpCircle, path: "/support" },
 ];
 
 const workspaceCards = [
@@ -421,7 +423,11 @@ export default function Dashboard() {
       >
         <div className="flex items-center gap-3 px-2 py-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#8c32e8] via-[#4935d4] to-[#253fe0] text-white shadow-lg shadow-purple-500/20">
-            <HeartPulse size={25} />
+            <img
+              src="/vitaAi.jpeg"
+              alt="VitaAI"
+              className="h-full w-full rounded-2xl object-cover"
+            />
           </div>
 
           <div className="min-w-0">

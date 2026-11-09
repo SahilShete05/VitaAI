@@ -23,6 +23,7 @@ model User {
   familyMembers FamilyMember[]
   assessments   Assessment[]
   reminders     Reminder[]
+  supportRequests SupportRequest[]
 }
 
 model FamilyMember {
@@ -130,4 +131,20 @@ model VitalSign {
   updatedAt DateTime @updatedAt
 
   @@index([userId, type, recordedAt])
+}
+
+model SupportRequest {
+  id        String   @id @default(uuid())
+  subject   String
+  message   String
+  category  String   @default("general")
+  status    String   @default("open")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
 }

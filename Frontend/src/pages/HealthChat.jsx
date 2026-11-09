@@ -5,7 +5,6 @@ import {
   Send,
   UserRound,
   LoaderCircle,
-  HeartPulse,
   ShieldCheck,
   AlertTriangle,
   Mic,
@@ -454,7 +453,11 @@ export default function HealthChat() {
           </Link>
 
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/20">
-            <HeartPulse size={23} />
+            <img
+              src="/vitaAi.jpeg"
+              alt="VitaAI"
+              className="h-full w-full rounded-2xl object-cover"
+            />
           </div>
 
           <div className="min-w-0 flex-1">

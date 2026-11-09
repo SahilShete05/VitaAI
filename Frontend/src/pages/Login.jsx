@@ -4,7 +4,6 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Eye,
   EyeOff,
-  HeartPulse,
   LoaderCircle,
   ShieldCheck,
   Sparkles,
@@ -65,7 +64,11 @@ export default function Login() {
 
           <div className="relative z-10 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/25 bg-white/15 shadow-lg backdrop-blur-lg">
-              <HeartPulse size={27} strokeWidth={2.2} />
+              <img
+                src="/vitaAi.jpeg"
+                alt="VitaAI"
+                className="h-full w-full rounded-2xl object-cover"
+              />
             </div>
             <div>
               <p className="text-xl font-bold tracking-tight">VitaAI</p>
@@ -103,7 +106,11 @@ export default function Login() {
         <section className="p-7 sm:p-10 lg:p-12">
           <div className="mb-8 flex items-center gap-3 md:hidden">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#8c32e8] to-[#253fe0] text-white shadow-lg shadow-purple-500/20">
-              <HeartPulse size={26} />
+              <img
+                src="/vitaAi.jpeg"
+                alt="VitaAI"
+                className="h-full w-full rounded-2xl object-cover"
+              />
             </div>
             <div>
               <h1 className="text-xl font-bold">VitaAI</h1>
