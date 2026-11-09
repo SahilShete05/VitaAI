@@ -5,10 +5,14 @@ const cookieParser = require("cookie-parser");
 
 const app = express();
 
-const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = [
+  "https://vita-ai-dun.vercel.app",
+  ...(process.env.FRONTEND_URL || "http://localhost:5173")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+]
+  .filter((origin, index, origins) => origins.indexOf(origin) === index);
 
 app.use(
   cors({
